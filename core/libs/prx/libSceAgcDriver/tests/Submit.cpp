@@ -260,6 +260,27 @@ void testEndOfPipeInterrupts() {
         check(output->ready.load() == static_cast<int>(4 + sustainedFlips + index), "flip paired with a release interrupt was not handed to its output");
         check(owner->GetTriggeredEvents(events.data(), 2) == 0, "a flip raised an event within two flips of the queue's own release interrupt");
     }
+    check(sceAgcDriverSubmitDcb(&flipPacket) == 0, "third flip with no release submit failed");
+    AgcDriverWaitIdle_nid_postfix();
+    check(owner->GetTriggeredEvents(events.data(), 2) == 0, "a third flip delivered an event before the latch clearing count");
+    {
+        const auto waitingFor = std::chrono::steady_clock::now();
+        bool gotEvent = false;
+        while (std::chrono::steady_clock::now() - waitingFor < std::chrono::milliseconds(1500)) {
+            if (owner->GetTriggeredEvents(events.data(), 2) != 0) {
+                gotEvent = true;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        check(!gotEvent, "a single suppressed flip delivered an event with no further flips and no further releases");
+    }
+    check(sceAgcDriverSubmitDcb(&flipPacket) == 0, "fourth flip with no release submit failed");
+    AgcDriverWaitIdle_nid_postfix();
+    check(owner->GetTriggeredEvents(events.data(), 2) == 0, "a fourth flip delivered an event before the latch clearing count");
+    check(sceAgcDriverSubmitDcb(&flipPacket) == 0, "fifth flip with no release submit failed");
+    AgcDriverWaitIdle_nid_postfix();
+    check(owner->GetTriggeredEvents(events.data(), 2) == 1, "the fifth flip did not clear the latch and deliver its event with no further releases");
     AgcDriverUnregisterVideoOutput_nid_postfix(7, output);
     alignas(8) static volatile std::uint64_t label = 0;
     const auto labelAddress = reinterpret_cast<std::uintptr_t>(&label);
